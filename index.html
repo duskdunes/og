@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dusk Dunes</title>
+<style>
+:root{--ink:#f3e9ff;--glow:#5ff0d2;--veil:rgba(24,16,48,.72);box-sizing:border-box}
+@media (prefers-color-scheme:dark){:root{--ink:#f3e9ff}}
+html,body{height:100%;margin:0;background:#241c44;overflow:hidden;font-family:"Avenir Next",Avenir,"Segoe UI",sans-serif;color:var(--ink)}
+canvas{display:block;width:100%;height:100%}
+#veil{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--veil);cursor:pointer;text-align:center;padding:24px}
+#veil div{max-width:420px}
+h1{font-size:2.4rem;font-weight:300;letter-spacing:.04em;margin:0 0 12px}
+p{margin:6px 0;line-height:1.5;color:#d6c8f0}
+b{color:var(--glow);font-weight:600}
+#hud{position:fixed;top:calc(16px + env(safe-area-inset-top,0px));left:20px;font-size:1.1rem;pointer-events:none}
+#hud span{color:var(--glow)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">Lights found <span id="n">0</span> of 7</div>
+<div id="veil"><div>
+<h1>Dusk Dunes</h1>
+<p>Seven lights are scattered among the stones. Find them all.</p>
+<p><b>Click</b> to look around. <b>W A S D</b> or arrow keys to walk. <b>Shift</b> to run. <b>Esc</b> to pause.</p>
+</div></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const cv=document.getElementById('c'),veil=document.getElementById('veil'),nEl=document.getElementById('n');
+const R=new THREE.WebGLRenderer({canvas:cv,antialias:true});
+R.setPixelRatio(Math.min(devicePixelRatio,2));
+const S=new THREE.Scene();
+S.background=new THREE.Color(0x2a2350);
+S.fog=new THREE.FogExp2(0x6b4f7a,0.011);
+const cam=new THREE.PerspectiveCamera(70,1,0.1,600);
+cam.rotation.order='YXZ';
+function size(){R.setSize(innerWidth,innerHeight,false);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix()}
+addEventListener('resize',size);size();
+
+S.add(new THREE.HemisphereLight(0xb79cff,0x4a3a5c,0.9));
+const sun=new THREE.DirectionalLight(0xff9f7a,1.1);sun.position.set(-60,18,-40);S.add(sun);
+
+const h=(x,z)=>Math.sin(x*.05)*Math.cos(z*.04)*2.4+Math.sin(x*.13+z*.09)*.6;
+const g=new THREE.PlaneGeometry(500,500,150,150);g.rotateX(-Math.PI/2);
+const p=g.attributes.position;
+for(let i=0;i<p.count;i++)p.setY(i,h(p.getX(i),p.getZ(i)));
+g.computeVertexNormals();
+S.add(new THREE.Mesh(g,new THREE.MeshStandardMaterial({color:0xcdb7c9,flatShading:true,roughness:1})));
+
+const starG=new THREE.BufferGeometry(),sp=[];
+for(let i=0;i<700;i++){const a=Math.random()*6.283,e=Math.random()*1.4+.1,r=450;sp.push(Math.cos(a)*Math.cos(e)*r,Math.sin(e)*r,Math.sin(a)*Math.cos(e)*r)}
+starG.setAttribute('position',new THREE.Float32BufferAttribute(sp,3));
+S.add(new THREE.Points(starG,new THREE.PointsMaterial({color:0xffffff,size:1.6,fog:false})));
+
+const rocks=[],rm=new THREE.MeshStandardMaterial({color:0x1f4a5a,emissive:0x0a2a35,roughness:.6});
+let seed=7;const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;
+for(let i=0;i<46;i++){
+  const x=(rnd()-.5)*340,z=(rnd()-.5)*340;if(Math.hypot(x,z)<14)continue;
+  const w=1.4+rnd()*2.2,ht=6+rnd()*14;
+  const m=new THREE.Mesh(new THREE.BoxGeometry(w,ht,w*(.7+rnd()*.6)),rm);
+  m.position.set(x,h(x,z)+ht/2-.5,z);m.rotation.y=rnd()*3;m.rotation.z=(rnd()-.5)*.08;
+  S.add(m);rocks.push({x,z,r:w*.9});
+}
+const pool=new THREE.Mesh(new THREE.CircleGeometry(18,48),new THREE.MeshBasicMaterial({color:0x2fc9b5}));
+pool.rotation.x=-Math.PI/2;pool.position.set(40,h(40,-30)+.15,-30);pool.material.transparent=true;pool.material.opacity=.75;S.add(pool);
+
+const orbs=[];
+for(let i=0;i<7;i++){
+  const a=i/7*6.283+.4,d=30+rnd()*110,x=Math.cos(a)*d,z=Math.sin(a)*d;
+  const o=new THREE.Mesh(new THREE.SphereGeometry(.7,20,20),new THREE.MeshBasicMaterial({color:0x7dffe6,fog:false}));
+  const halo=new THREE.Mesh(new THREE.SphereGeometry(1.6,20,20),new THREE.MeshBasicMaterial({color:0x5ff0d2,transparent:true,opacity:.2,fog:false}));
+  o.add(halo);o.position.set(x,h(x,z)+2,z);o.userData.base=o.position.y;S.add(o);orbs.push(o);
+}
+
+let yaw=0,pitch=0,found=0,locked=false;const keys={};
+const set=(e,v)=>{keys[e.code]=v};
+addEventListener('keydown',e=>set(e,true));addEventListener('keyup',e=>set(e,false));
+veil.addEventListener('click',()=>{try{cv.requestPointerLock()}catch(e){veil.style.display='none'}});
+document.addEventListener('pointerlockchange',()=>{locked=document.pointerLockElement===cv;veil.style.display=locked?'none':'flex'});
+addEventListener('mousemove',e=>{if(!locked)return;yaw-=e.movementX*.0022;pitch=Math.max(-1.4,Math.min(1.4,pitch-e.movementY*.0022))});
+
+const pos=new THREE.Vector3(0,0,0),clock=new THREE.Clock();
+function tick(){
+  const dt=Math.min(clock.getDelta(),.05),t=clock.elapsedTime;
+  if(locked){
+    const sp=(keys.ShiftLeft||keys.ShiftRight?16:7)*dt;
+    const f=(keys.KeyW||keys.ArrowUp?1:0)-(keys.KeyS||keys.ArrowDown?1:0);
+    const s=(keys.KeyD||keys.ArrowRight?1:0)-(keys.KeyA||keys.ArrowLeft?1:0);
+    pos.x+=(-Math.sin(yaw)*f+Math.cos(yaw)*s)*sp;
+    pos.z+=(-Math.cos(yaw)*f-Math.sin(yaw)*s)*sp;
+    for(const r of rocks){const dx=pos.x-r.x,dz=pos.z-r.z,d=Math.hypot(dx,dz);if(d<r.r+.6){pos.x=r.x+dx/d*(r.r+.6);pos.z=r.z+dz/d*(r.r+.6)}}
+    pos.x=Math.max(-240,Math.min(240,pos.x));pos.z=Math.max(-240,Math.min(240,pos.z));
+  }
+  const gy=h(pos.x,pos.z)+1.7;pos.y+=(gy-pos.y)*Math.min(1,dt*12);
+  cam.position.copy(pos);cam.rotation.set(pitch,yaw,0);
+  orbs.forEach((o,i)=>{
+    if(!o.visible)return;
+    o.position.y=o.userData.base+Math.sin(t*1.6+i)*.35;
+    if(o.position.distanceTo(cam.position)<3){o.visible=false;found++;nEl.textContent=found;
+      if(found===7){document.getElementById('hud').innerHTML='All seven lights found. The dunes are yours.'}}
+  });
+  R.render(S,cam);requestAnimationFrame(tick);
+}
+tick();
+</script>
+</body>
+</html>
